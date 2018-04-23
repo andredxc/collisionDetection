@@ -62,9 +62,17 @@ int main(int argc, char** argv){
             }
         }
     }
-
     fclose(outputFile);
-    //TODO: free memory
+    clearStructs();
+}
+
+void clearStructs(){
+
+    int i;
+
+    for(i = 0; i < _shapeVectorIndex; i++){
+        free(_shapeVector[i].object);
+    }
 }
 
 void updatePositions(int elapsedTime_uSec){
