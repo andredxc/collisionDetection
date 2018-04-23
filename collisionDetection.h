@@ -29,7 +29,6 @@ void updatePositions(int elapsedTime);
 void printAllShapes();
 void printShape(SHAPE shape);
 int loadShapes(char* sphereFileName, char* recFileName);
-void createShapes();
 SHAPE createRectangle(float centerX, float centerY, float centerZ, float speedX, float speedY, float speedZ, float width, float height, float depth);
 SHAPE createSphere(float centerX, float centerY, float centerZ, float speedX, float speedY, float speedZ, float radius);
 int checkForCollision(SHAPE shape1, SHAPE shape2);
