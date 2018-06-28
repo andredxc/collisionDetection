@@ -2,40 +2,61 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 int main(int argc, char** argv){
 
-	char binaryPath[256], outputFilePath[256];
+	char outputFilePath[256];
 	char compareCommand[100];
-	char* args1[] = {"tempOut1"};
-	char* args2[] = {"tempOut2"};
+	char *args1[] = {"collisionDetection", "tempOut1", NULL};
+	char *args2[] = {"collisionDetection", "tempOut2", NULL};
 	FILE *tempFile1, *tempFile2, *outputFile;
 	char charBuffer;
-
+	pid_t pid;
 
 	// Checks for arguments
-	if(argc != 3){
-		printf("Usage: ./collisionDetection_duplicated <collisionDetectionBinary> <outputFile>\n");
+	if(argc != 2){
+		printf("Usage: ./collisionDetection_duplicated <outputFilePath>\n");
 		return(0);
 	}
 
 	// Retrieves arguments from command line
-	sscanf(argv[1], "./collisionDetection_duplicated %s %s", binaryPath, outputFilePath);
-	strncpy(binaryPath, argv[1], sizeof(binaryPath));
-	strncpy(outputFilePath, argv[2], sizeof(outputFilePath));
+	strncpy(outputFilePath, argv[1], sizeof(outputFilePath));
 
 	// First execution
-	if(execv(binaryPath, args1) == -1){
-		printf("1: Error running \"%s\" with args \"%s\"\n", binaryPath, args1[0]);
+	pid = fork();
+	if(pid == 0){
+		// Executes program in child process
+		printf("Running execution 1...\n");
+		if(execv("collisionDetection", args1) == -1){
+			printf("1: Error running \"collisionDetection\" with args \"%s\"\n", args1[1]);
+		}	
 	}
+	else{
+		// Father process waits for the first execution to finish
+		waitpid(pid, 0, 0);
+	}
+	printf("Done running execution 1\n");
 
+	
 	// Second execution
-	if(execv(binaryPath, args2) == -1){
-		printf("2: Error running \"%s\" with args \"%s\"\n", binaryPath, args2[0]);	
+	pid = fork();
+	if(pid == 0){
+		// Executes program in child process
+		printf("Running execution 2...\n");
+		if(execv("collisionDetection", args2) == -1){
+			printf("2: Error running \"collisionDetection\" with args \"%s\"\n", args2[1]);	
+		}
 	}
+	else{
+		// Father process waits for the second execution to finish
+		waitpid(pid, 0, 0);
+	}	
+	printf("Done running execution 2\n");
 
 	// Compares the two results
-	snprintf(compareCommand, sizeof(compareCommand), "diff %s %s", args1[0], args2[0]);
+	snprintf(compareCommand, sizeof(compareCommand), "diff %s %s", args1[1], args2[1]);
 	if(system(compareCommand) != 0){
 		printf("Output files are different!\n");
 	}
@@ -44,8 +65,8 @@ int main(int argc, char** argv){
 	}
 
 	// Combines the two output files
-	tempFile1 = fopen(args1[0], "r");
-	tempFile2 = fopen(args2[0], "r");
+	tempFile1 = fopen(args1[1], "r");
+	tempFile2 = fopen(args2[1], "r");
 	outputFile = fopen(outputFilePath, "w");
 
 	if(!tempFile1 || !tempFile2 || !outputFile){
