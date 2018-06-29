@@ -1,12 +1,11 @@
 #!/bin/python
-import re
-import os
+import re, os, getopt, sys, pickle
 
 class Injection:
     """
     Stores information about a single fault injection
     """
-    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName):
+    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName, faultResult):
         self.varName = varName
         self.varType = varType
         self.line = line
@@ -15,71 +14,126 @@ class Injection:
         self.faultModel = faultModel
         self.fileName = fileName
         self.functionName = functionName
+        self.faultResult = faultResult
 
     def __repr__(self):
 
         if self.varType.find("structure") > -1 or self.varType.find("array") > -1:
             # Doesn't print values for arrays or structs
-            return "varName: %s\nvarType: %s\nline: %s\nfaultModel: %s\nfileName: %s\nfunctionName: %s\n" %(self.varName, self.varType, self.line, self.faultModel, self.fileName, self.functionName)
+            return "faultResult: %s\nvarName: %s\nvarType: %s\nline: %s\nfaultModel: %s\nfileName: %s\nfunctionName: %s\n" %(self.faultResult, self.varName, self.varType, self.line, self.faultModel, self.fileName, self.functionName)
         else:
-            return "varName: %s\nvarType: %s\nline: %s\nmemCont: %s\nnewValue: %s\nfaultModel: %s\nfileName: %s\nfunctionName: %s\n" %(self.varName, self.varType, self.line, self.memContentBefore, self.newValue, self.faultModel, self.fileName, self.functionName)
-        #return "%s <= %s at %s:%s" %(self.varName, self.newValue, self.functionName, self.line)
+            return "faultResult: %s\nvarName: %s\nvarType: %s\nline: %s\nmemCont: %s\nnewValue: %s\nfaultModel: %s\nfileName: %s\nfunctionName: %s\n" %(self.faultResult, self.varName, self.varType, self.line, self.memContentBefore, self.newValue, self.faultModel, self.fileName, self.functionName)
 
+class Result:
+    """
+    Stores information about all results from multiple fault injections
+    """
+    def __init__(self, failedList, hangList, maskedList, sdcList):
+        self.failedList = failedList
+        self.hangList = hangList
+        self.maskedList = maskedList
+        self.sdcList = sdcList
 
-#-------------------------------------------------------------------------------
-def main():
+    def __repr__(self):
 
-    logDir = "/home/andre/ufrgs/ftf/final_logs/collisionDetection-random/"
-
-    for fileName in os.listdir(logDir):
-        # Skip regular files
-        if not os.path.isdir(logDir + fileName):
-            continue
-
-        if fileName == "failed-injection":
-            # Failed
-            continue
-
-        elif fileName == "hangs":
-            # Hangs
-            hangList = handleHangs(logDir+"hangs/")
-
-        elif fileName == "masked":
-            # Masked
-            continue
-
-        elif fileName == "noOutputGenerated":
-            # No output
-            continue
-
-        elif fileName == "sdcs":
-            # SDCs
-            continue
-
-    printList(hangList)
+        return "--Result--\n\tFailed: %d\n\tHangs: %d\n\tMasked: %d\n\tSDCs: %d\n" %(len(self.failedList), len(self.hangList), len(self.maskedList), len(self.sdcList))
 
 #-------------------------------------------------------------------------------
-def handleHangs(hangDir):
+def main(argv):
 
-    hangList = list()
+    logDir = "/home/andre/ufrgs/ftf/initial_logs/collisionDetection-random/"
+    newLogs = False
+
+    # Reading arguments from command line
+    try:
+        opts, args = getopt.getopt(argv, "", ["help", "new"])
+        for opt, arg in opts:
+            if opt == "--new":
+                newLogs = True
+            elif opt == "--help":
+                print("Usage:")
+                print("\t--new to read all log files from the directory listed in \'logDir\' variable.")
+                print("\tNo argument to read values from previously written \'result.pkl\' file.")
+                sys.exit(1);
+    except getopt.GetoptError:
+        print("Problem with provided arguments")
+        sys.exit(0)
+
+    if(newLogs):
+        # Initialization
+        failedList = list()
+        hangList = list()
+        maskedList = list()
+        noOutputList = list()
+        sdcList = list()
+
+        # Searches all directories
+        for fileName in os.listdir(logDir):
+            # Skip regular files
+            if not os.path.isdir(logDir + fileName):
+                continue
+
+            if fileName == "failed-injection":
+                # Failed
+                print("Reading failed injection logs...")
+                failedList = handleLogDir(failedList, logDir+"failed-injection", "failed")
+
+            elif fileName == "hangs":
+                # Hangs
+                print("Reading hang injections logs...")
+                hangList = handleLogDir(hangList, logDir+"hangs/", "hangs")
+
+            elif fileName == "masked":
+                # Masked
+                print("Reading masked injections logs...")
+                maskedList = handleLogDir(maskedList, logDir+"masked/", "masked")
+
+            elif fileName == "noOutputGenerated":
+                # No output
+                print("Reading noOutput injections logs...")
+                noOutputList = handleLogDir(noOutputList, logDir+"noOutputGenerated/", "noOutputGenerated")
+
+            elif fileName == "sdcs":
+                # SDCs
+                print("Reading SDC injections logs...")
+                sdcList = handleLogDir(sdcList, logDir+"sdcs/", "sdcs")
+
+        # Create Result object
+        result = Result(failedList, hangList, maskedList, sdcList)
+        # Save variables with pickle
+        pickle.dump(result, open("result.pkl", "wb"))
+
+    else:
+        # Reads variables with pickle
+        try:
+            result = pickle.load(open("result.pkl", "rb"))
+        except:
+            print("Couldn't read pickle values!")
+            sys.exit(0)
+
+    # Print number of elements in each list
+    print(result)
+
+#-------------------------------------------------------------------------------
+def handleLogDir(injList, hangDir, faultResult):
 
     for dateDir in os.listdir(hangDir):
-
+        # Every date directory
         if not os.path.isdir(hangDir+dateDir):
             # Skip regular files
             continue
-        # Accesses dirs containing actual log files
         for logDir in os.listdir(hangDir+dateDir):
+            # Every injection directory
             # Finds the useful log file
             logFileList = os.listdir(hangDir + dateDir + "/" + logDir)
             fileIndex = findInList(logFileList, "flipvalue")
             if fileIndex != -1:
                 # Reads data from file and appends new object to the result list
                 logFile = open(hangDir + dateDir + "/" + logDir + "/" + logFileList[fileIndex], "r").readlines()
-                hangList.append(readValuesFromLog(logFile))
-    return hangList
+                injList.append(readValuesFromLog(logFile, faultResult))
+    return injList
 
-def readValuesFromLog(logFile):
+def readValuesFromLog(fileContent, faultResult):
     """
     Returns an Injection object containig the values read from the file
     """
@@ -93,7 +147,7 @@ def readValuesFromLog(logFile):
     filename = ""
     funcName = ""
     # Reads every line in the file
-    for line in logFile:
+    for line in fileContent:
         # Extracts data from each line
         if re.search("^Fault Model:.*", line):
             # Fault Model: Random bit-flip
@@ -128,7 +182,7 @@ def readValuesFromLog(logFile):
             # Type: A floating point type.
             varType = re.search("(?<=^Type:).*", line).group().lstrip()
 
-    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName)
+    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName, faultResult)
     return injectionBuf
 
 def findInList(listVar, content):
@@ -152,4 +206,4 @@ def printList(listVar):
         print(element)
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
