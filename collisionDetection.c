@@ -31,7 +31,7 @@ int main(int argc, char** argv){
         return 0;
     }
 
-    loadShapes("sphereData.csv", "rectangleData.csv");
+    loadShapes("/home/andre/github/collisionDetection/sphereData.csv", "/home/andre/github/collisionDetection/rectangleData.csv");
     // printAllShapes();
     // return 1;
     collisionDetected = 1;
