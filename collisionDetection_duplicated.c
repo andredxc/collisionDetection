@@ -6,18 +6,20 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <sys/time.h>
+#include "collisionDetection.h"
 
 int main(int argc, char** argv){
 
 	char outputFilePath[256];
-	char compareCommand[100];
-	char *args1[] = {"collisionDetection", "tempOut1", NULL};
-	char *args2[] = {"collisionDetection", "tempOut2", NULL};
+	char compareCommand[256];
+	char *args1[] = {"/home/andre/github/collisionDetection/collisionDetection", "/home/andre/github/collisionDetection/tempOut1", NULL};
+	char *args2[] = {"/home/andre/github/collisionDetection/collisionDetection", "/home/andre/github/collisionDetection/tempOut2", NULL};
 	char sdcLogFileName[60] = {"duplicated_collisionDetection_sdc_count.txt"};
 	FILE *tempFile1, *tempFile2, *outputFile, *sdcLogFile;
 	char charBuffer;
 	pid_t pid;
-	int sdcCount, sdcFound = -1;
+	int sdcCount, sdcFound = 0;
+	char fileContentBuf[50];
 	
 	/*
 	struct timeval t1, t2;
@@ -35,38 +37,22 @@ int main(int argc, char** argv){
 	strncpy(outputFilePath, argv[1], sizeof(outputFilePath));
 
 	// First execution
-	pid = fork();
-	if(pid == 0){
-		// Executes program in child process
-		if(execv("collisionDetection", args1) == -1){
-			printf("1: Error running \"collisionDetection\" with args \"%s\"\n", args1[1]);
-		}	
-	}
-	else{
-		// Father process waits for the first execution to finish
-		waitpid(pid, 0, 0);
-	}
+	system("/home/andre/github/collisionDetection/collisionDetection_duplicated /home/andre/github/collisionDetection/tempFile1");
+	printf("Ran execution 1\n");
 
 	// Second execution
-	pid = fork();
-	if(pid == 0){
-		// Executes program in child process
-		if(execv("collisionDetection", args2) == -1){
-			printf("2: Error running \"collisionDetection\" with args \"%s\"\n", args2[1]);	
-		}
-	}
-	else{
-		// Father process waits for the second execution to finish
-		waitpid(pid, 0, 0);
-	}	
+	system("/home/andre/github/collisionDetection/collisionDetection_duplicated /home/andre/github/collisionDetection/tempFile2");
+	printf("Ran execution 2\n");
+		
 
 	// Compares the two results
-	snprintf(compareCommand, sizeof(compareCommand), "diff %s %s", args1[1], args2[1]);
+	snprintf(compareCommand, sizeof(compareCommand), "diff /home/andre/github/collisionDetection/tempFile2 /home/andre/github/collisionDetection/tempFile2");
 	if(system(compareCommand) != 0){
 		// Output files are different, SDC detected
 		sdcFound = 1;
 	}	
 
+	/*
 	// Combines the two output files
 	tempFile1 = fopen(args1[1], "r");
 	tempFile2 = fopen(args2[1], "r");
@@ -86,20 +72,23 @@ int main(int argc, char** argv){
 	fclose(tempFile1);
 	fclose(tempFile2);
 	fclose(outputFile);
+	*/
 
 	// Adds SDC to log file
 	if(sdcFound){
-		sdcLogFile = fopen(sdcLogFileName, "a");
-		if(sdcLogFile){
-			fscanf(sdcLogFile, "%d", &sdcCount);
-			sdcCount++;
-			fseek(sdcLogFile, 0, SEEK_SET);
-			fprintf(sdcLogFile, "%d", sdcCount);
+		sdcLogFile = fopen(sdcLogFileName, "r");
+		if(sdcLogFile && fgets(fileContentBuf, 100, sdcLogFile) && atoi(fileContentBuf)){
+			// Read something
+			sdcCount = atoi(fileContentBuf) + 1;
 			fclose(sdcLogFile);
 		}
 		else{
-			printf("Error reading SDC log file\n");
+			// No file
+			sdcCount = 1;
 		}
+		sdcLogFile = fopen(sdcLogFileName, "w");
+		fprintf(sdcLogFile, "%d", sdcCount);
+		fclose(sdcLogFile);
 	}
 
 	/*

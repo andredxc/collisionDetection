@@ -69,6 +69,56 @@ int main(int argc, char** argv){
     clearStructs();
 }
 
+void doAll(char* outputFileName){
+
+    int i, j;
+    int elapsedTime = 100000; // Elapsed time in micro seconds
+    FILE *outputFile;
+    int collisionDetected = 1;
+
+    outputFile = fopen(outputFileName, "w+");
+    if(!outputFile){
+        printf("Error creating output file \"%s\"\n", outputFileName);
+        return;
+    }
+
+    loadShapes("/home/andre/github/collisionDetection/sphereData.csv", "/home/andre/github/collisionDetection/rectangleData.csv");
+
+    collisionDetected = 1;
+    while(collisionDetected){
+
+        fprintf(outputFile, "New iteration --------------------------------\n");
+        collisionDetected = 0;
+        // Simulates 100 ms as elapsedTime
+        updatePositions(elapsedTime);
+        for(i = 0; i < _shapeVectorIndex; i++){
+            for(j = 0; j < _shapeVectorIndex; j++){
+
+                // Testing for null object
+                if(!_shapeVector[i].object){
+                    printf("NULL OBJECT AT %d\n", i);
+                    printShape(_shapeVector[i]);
+                }
+                else if(!_shapeVector[j].object){
+                    printf("NULL OBJECT AT %d\n", j);
+                    printShape(_shapeVector[j]);
+                }
+
+                if(i != j){
+                    // Checks for collisions between any pair os shapes
+                    if(checkForCollision(_shapeVector[i], _shapeVector[j])){
+                        // fprintf(outputFile, "Collision betweeen %d and %d\n", i, j);
+                        fprintf(outputFile, "(%d, %d)\n", i, j);
+                        collisionDetected = 1;
+                    }
+                }
+            }
+        }
+    }
+    fclose(outputFile);
+    clearStructs();
+}
+
 void clearStructs(){
 
     int i;

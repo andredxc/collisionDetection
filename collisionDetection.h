@@ -25,6 +25,7 @@ typedef struct struct_rectangle{
     float width, height, depth;
 }RECTANGLE;
 
+void doAll(char* outputFileName);
 void clearStructs();
 void updatePositions(int elapsedTime);
 void printAllShapes();
