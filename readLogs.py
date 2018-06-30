@@ -5,7 +5,7 @@ class Injection:
     """
     Stores information about a single fault injection
     """
-    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName, faultResult):
+    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName, faultResult, sdcCriticality):
         self.varName = varName
         self.varType = varType
         self.line = line
@@ -15,6 +15,7 @@ class Injection:
         self.fileName = fileName
         self.functionName = functionName
         self.faultResult = faultResult
+        self.sdcCriticality = sdcCriticality # -1 = not evaluated, 0 = not critical, >0 = how critical
 
     def __repr__(self):
 
@@ -81,7 +82,7 @@ def main(argv):
             elif fileName == "hangs":
                 # Hangs
                 print("Reading hang injections logs...")
-                hangList = handleLogDir(hangList, logDir+"hangs/", "hangs")
+                hangList = handleLogDir(hangList, logDir+"hangs/", "hang")
 
             elif fileName == "masked":
                 # Masked
@@ -96,7 +97,7 @@ def main(argv):
             elif fileName == "sdcs":
                 # SDCs
                 print("Reading SDC injections logs...")
-                sdcList = handleLogDir(sdcList, logDir+"sdcs/", "sdcs")
+                sdcList = handleLogDir(sdcList, logDir+"sdcs/", "sdc")
 
         # Create Result object
         result = Result(failedList, hangList, maskedList, sdcList)
@@ -113,8 +114,110 @@ def main(argv):
 
     # Print number of elements in each list
     print(result)
+    # listSdcCriticality(result)
+    listCriticalVariables(result)
 
 #-------------------------------------------------------------------------------
+def listSdcCriticality(result):
+    """
+    List SDC cricitality
+    """
+    sdcCriticalityFilePath = "/home/andre/ufrgs/ftf/sdcCriticality.log"
+    listBuf = result.sdcList
+    listBuf = sorted(listBuf, key=lambda x: x.sdcCriticality)
+    listBuf.reverse()
+
+    # Log file
+    logFile = open(sdcCriticalityFilePath, "w")
+
+    totalElements = 2819.0
+
+    for percentageCount in range(2,101,2):
+        elementCount = 0
+        for item in listBuf:
+            if (item.sdcCriticality > percentageCount-2) and (item.sdcCriticality <= percentageCount):
+                elementCount += 1
+
+
+        logFile.write("%d: %.2f\n" %(percentageCount, float(elementCount)/totalElements*100.0))
+    logFile.close()
+
+def listCriticalVariables(result):
+    """
+    Lists number of ocurrances of each variable in each Result list
+    Outputs results into listCriticalVariables.dat file
+    """
+
+    sdcCritVarFilePath = "/home/andre/ufrgs/ftf/sdcCriticalVariables.log"
+    hangCritVarFilePath = "/home/andre/ufrgs/ftf/hangCriticalVariables.log"
+    sdcVarDic = dict()
+    hangsVarDic = dict()
+
+    # Creates dicts for variable ocurrances
+    for inj in result.hangList:
+        # Counts the number of times each variable causes an SDC
+        if not (inj.varName in hangsVarDic.keys()):
+            # Ads variable to dictionary
+            hangsVarDic[inj.varName] = 1
+        else:
+            # Increments variable occurrance
+            hangsVarDic[inj.varName] += 1
+
+    hangsVarDic = sorted(hangsVarDic.items(), key=lambda x: x[1])
+
+    for inj in result.sdcList:
+        # Counts the number of times each variable causes an SDC
+        if not (inj.varName in sdcVarDic.keys()):
+            # Ads variable to dictionary
+            sdcVarDic[inj.varName] = 1
+        else:
+            # Increments variable occurrance
+            sdcVarDic[inj.varName] += 1
+
+    sdcVarDic = sorted(sdcVarDic.items(), key=lambda x: x[1])
+
+    #Print lists into log file
+    hangLogFile = open(hangCritVarFilePath, "w")
+    sdcLogFile = open(sdcCritVarFilePath, "w")
+
+    for item in hangsVarDic:
+        hangLogFile.write("%s: %s\n" %(item[0], item[1]))
+
+    for item in sdcVarDic:
+        sdcLogFile.write("%s: %s\n" %(item[0], item[1]))
+
+    sdcLogFile.close()
+    hangLogFile.close()
+
+#-------------------------------------------------------------------------------
+def sdcCriticality(dirPath):
+    """
+    Compares the number data lines between gold and corrupted outputs
+    Return values: -1 = Error, 0 = Not critical, >0 = How critical
+
+    gold file has a total of 222082 lines, 294 of which have no data in them.
+    The total number of useful lines is 221788
+    """
+
+    faultyFileLines = 0
+    faultyFileName = "outputFile"
+    goldFileLines = 221788
+
+    faultyContent = open(dirPath+"/"+faultyFileName, "r").readlines()
+    count = 0
+    for line in faultyContent:
+        # Counts the number of useful lines
+        if re.search("New Iteration*", line):
+            count += 1
+
+    faultyFileLines = len(faultyContent) - count
+    absDifference = abs(goldFileLines - faultyFileLines)
+    # Percentage difference
+    print("Calculating: %d/%d" %(absDifference, goldFileLines))
+    perDifference = (float(absDifference)/float(goldFileLines)) * 100.0
+    print("Percentage difference: %f" %(perDifference))
+    return(perDifference)
+
 def handleLogDir(injList, hangDir, faultResult):
 
     for dateDir in os.listdir(hangDir):
@@ -130,7 +233,13 @@ def handleLogDir(injList, hangDir, faultResult):
             if fileIndex != -1:
                 # Reads data from file and appends new object to the result list
                 logFile = open(hangDir + dateDir + "/" + logDir + "/" + logFileList[fileIndex], "r").readlines()
-                injList.append(readValuesFromLog(logFile, faultResult))
+                injBuffer = readValuesFromLog(logFile, faultResult)
+                # Performs application specific SDC criticality analysis
+                if faultResult == "sdc":
+                    injBuffer.sdcCriticality = sdcCriticality(hangDir + dateDir + "/" + logDir)
+
+                injList.append(injBuffer)
+
     return injList
 
 def readValuesFromLog(fileContent, faultResult):
@@ -182,7 +291,7 @@ def readValuesFromLog(fileContent, faultResult):
             # Type: A floating point type.
             varType = re.search("(?<=^Type:).*", line).group().lstrip()
 
-    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName, faultResult)
+    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName, faultResult, -1)
     return injectionBuf
 
 def findInList(listVar, content):
