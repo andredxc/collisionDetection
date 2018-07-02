@@ -5,7 +5,7 @@ class Injection:
     """
     Stores information about a single fault injection
     """
-    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName, faultResult, sdcCriticality):
+    def __init__(self, varName, varType, line, memContentBefore, newValue, faultModel, fileName, functionName, faultResult, sdcCriticality, time, decLine, decFile):
         self.varName = varName
         self.varType = varType
         self.line = line
@@ -16,6 +16,16 @@ class Injection:
         self.functionName = functionName
         self.faultResult = faultResult
         self.sdcCriticality = sdcCriticality # -1 = not evaluated, 0 = not critical, >0 = how critical
+        self.time = time
+        self.decLine = decLine
+        self.decFile = decFile
+
+    def __eq__(self, other):
+        """
+        Return true if the variables are the same
+        """
+        return self.varName == other.varName and self.decLine == other.decLine \
+            and self.decFile == other.decFile
 
     def __repr__(self):
 
@@ -116,6 +126,7 @@ def main(argv):
     print(result)
     # listSdcCriticality(result)
     listCriticalVariables(result)
+    # listTimeVulnerability(result)
 
 #-------------------------------------------------------------------------------
 def listSdcCriticality(result):
@@ -154,25 +165,35 @@ def listCriticalVariables(result):
     hangsVarDic = dict()
 
     # Creates dicts for variable ocurrances
-    for inj in result.hangList:
-        # Counts the number of times each variable causes an SDC
-        if not (inj.varName in hangsVarDic.keys()):
-            # Ads variable to dictionary
-            hangsVarDic[inj.varName] = 1
-        else:
-            # Increments variable occurrance
-            hangsVarDic[inj.varName] += 1
+    for varIndex, inj in enumerate(result.hangList):
+        # For each injection
+        varFound = False
+        for index in hangsVarDic.keys():
+            # Each index already stored in the counter list
+            if(result.hangList[index] ==  inj):
+                # The variables are the same
+                hangsVarDic[index] += 1
+                varFound = True
+
+        if not varFound:
+            # Variable hasn't been counted yet
+            hangsVarDic[varIndex] = 1
 
     hangsVarDic = sorted(hangsVarDic.items(), key=lambda x: x[1])
 
-    for inj in result.sdcList:
-        # Counts the number of times each variable causes an SDC
-        if not (inj.varName in sdcVarDic.keys()):
-            # Ads variable to dictionary
-            sdcVarDic[inj.varName] = 1
-        else:
-            # Increments variable occurrance
-            sdcVarDic[inj.varName] += 1
+    for varIndex, inj in enumerate(result.sdcList):
+        # For each injection
+        varFound = False
+        for index in sdcVarDic.keys():
+            # Each index already stored in the counter list
+            if(result.sdcList[index] == inj):
+                # The variables are the same
+                sdcVarDic[index] += 1
+                varFound = True
+
+        if not varFound:
+            # Variable hasn't been counted yet
+            sdcVarDic[varIndex] = 1
 
     sdcVarDic = sorted(sdcVarDic.items(), key=lambda x: x[1])
 
@@ -181,13 +202,45 @@ def listCriticalVariables(result):
     sdcLogFile = open(sdcCritVarFilePath, "w")
 
     for item in hangsVarDic:
-        hangLogFile.write("%s: %s\n" %(item[0], item[1]))
+        hangLogFile.write("%s[%s:%d]: %s\n" %(result.hangList[item[0]].varName, result.hangList[item[0]].decFile, result.hangList[item[0]].decLine, item[1]))
 
     for item in sdcVarDic:
-        sdcLogFile.write("%s: %s\n" %(item[0], item[1]))
+        sdcLogFile.write("%s[%s:%d]: %s\n" %(result.sdcList[item[0]].varName, result.sdcList[item[0]].decFile, result.sdcList[item[0]].decLine, item[1]))
 
     sdcLogFile.close()
     hangLogFile.close()
+
+def listTimeVulnerability(result):
+    """
+    Creates log with number of hangs and SDCs over time
+    """
+    hangLogPath = "/home/andre/ufrgs/ftf/hangTimeVulnerability.log"
+    sdcLogPath = "/home/andre/ufrgs/ftf/sdcTimeVulnerability.log"
+    hangList = result.hangList
+    sdcList = result.sdcList
+    timeStep = 1
+
+    hangList = sorted(hangList, key=lambda x: x.time)
+    sdcList = sorted(sdcList, key=lambda x: x.time)
+    hangFile = open(hangLogPath, "w")
+    sdcFile = open(sdcLogPath, "w")
+
+    for timeSlot in range(timeStep, 40, timeStep):
+        hangCount = 0
+        sdcCount = 0
+        for item in hangList:
+            if (item.time > timeSlot-timeStep) and (item.time <= timeSlot):
+                hangCount += 1
+
+        for item in sdcList:
+            if (item.time > timeSlot-timeStep) and (item.time <= timeSlot):
+                sdcCount += 1
+
+        hangFile.write("%d - %d: %d\n" %(timeSlot-timeStep, timeSlot, hangCount))
+        sdcFile.write("%d - %d: %d\n" %(timeSlot-timeStep, timeSlot, sdcCount))
+
+    hangFile.close()
+    sdcFile.close()
 
 #-------------------------------------------------------------------------------
 def sdcCriticality(dirPath):
@@ -213,12 +266,12 @@ def sdcCriticality(dirPath):
     faultyFileLines = len(faultyContent) - count
     absDifference = abs(goldFileLines - faultyFileLines)
     # Percentage difference
-    print("Calculating: %d/%d" %(absDifference, goldFileLines))
     perDifference = (float(absDifference)/float(goldFileLines)) * 100.0
-    print("Percentage difference: %f" %(perDifference))
     return(perDifference)
 
 def handleLogDir(injList, hangDir, faultResult):
+
+    sdcCount = 0
 
     for dateDir in os.listdir(hangDir):
         # Every date directory
@@ -236,7 +289,10 @@ def handleLogDir(injList, hangDir, faultResult):
                 injBuffer = readValuesFromLog(logFile, faultResult)
                 # Performs application specific SDC criticality analysis
                 if faultResult == "sdc":
-                    injBuffer.sdcCriticality = sdcCriticality(hangDir + dateDir + "/" + logDir)
+                    sdcCount += 1
+                    print("Avaluating SDC number %d criticality..." %(sdcCount))
+                    # TODO: UNCOMENT
+                    # injBuffer.sdcCriticality = sdcCriticality(hangDir + dateDir + "/" + logDir)
 
                 injList.append(injBuffer)
 
@@ -255,6 +311,7 @@ def readValuesFromLog(fileContent, faultResult):
     faultModel = ""
     filename = ""
     funcName = ""
+    time = ""
     # Reads every line in the file
     for line in fileContent:
         # Extracts data from each line
@@ -291,7 +348,24 @@ def readValuesFromLog(fileContent, faultResult):
             # Type: A floating point type.
             varType = re.search("(?<=^Type:).*", line).group().lstrip()
 
-    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName, faultResult, -1)
+        elif re.search("^Fault.*", line):
+            # Injection time
+            # Fault Injection Successful after 2.5929765701293945s
+            time = re.search("(?<=^Fault Injection Successful after).*(?=s)", line).group().lstrip()
+            time = float(time)
+
+        elif re.search("^symbol line.*", line):
+            # Variable declaration line
+            # symbol line: 9
+            decLine = re.search("(?<=^symbol line:).*", line).group().lstrip()
+            decLine = int(decLine)
+
+        elif re.search("^symbol filename.*", line):
+            # Variable declaration file
+            # symbol filename: collisionDetection.c
+            decFile = re.search("(?<=^symbol filename:).*", line).group().lstrip()
+
+    injectionBuf = Injection(varName, varType, injectionLine, memContentBefore, newValue, faultModel, filename, funcName, faultResult, -1, time, decLine, decFile)
     return injectionBuf
 
 def findInList(listVar, content):
