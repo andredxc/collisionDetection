@@ -18,7 +18,6 @@ int main(int argc, char** argv){
 	char compareCommand[256];
 	FILE *tempFile1, *tempFile2, *outputFile, *sdcLogFile;
 	char charBuffer;
-	int sdcFound = 0;
 	
 	/*
 	struct timeval t1, t2;
@@ -36,16 +35,20 @@ int main(int argc, char** argv){
 	strncpy(outputFilePath, argv[1], sizeof(outputFilePath));
 
 	// First execution
-	// doAll(OUT1);
+	doAll(OUT1);
 
 	// Second execution
-	// doAll(OUT2);
+	doAll(OUT2);
 
 	// Compares the two results
 	snprintf(compareCommand, sizeof(compareCommand), "diff %s %s", OUT1, OUT2);
 	if(system(compareCommand) != 0){
 		// Output files are different, SDC detected
-		sdcFound = 1;
+		sdcLogFile = fopen(SDC_LOG, "a");
+		if(sdcLogFile){
+			fprintf(sdcLogFile, "SDC happened\n");
+			fclose(sdcLogFile);
+		}
 	}	
 
 	// Combines the two output files
@@ -67,15 +70,6 @@ int main(int argc, char** argv){
 	fclose(tempFile1);
 	fclose(tempFile2);
 	fclose(outputFile);
-
-	// Adds SDC to log file
-	if(sdcFound){
-		sdcLogFile = fopen(SDC_LOG, "a");
-		if(sdcLogFile){
-			fprintf(sdcLogFile, "SDC happened\n");
-			fclose(sdcLogFile);
-		}
-	}
 
 	/*
 	gettimeofday(&t2, NULL);
